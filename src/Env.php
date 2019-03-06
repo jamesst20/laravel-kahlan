@@ -252,7 +252,7 @@ class Env
         putenv('BASE_URL=http://localhost');
 
         if (is_readable($filename) && is_file($filename)) {
-            (new Dotenv(self::$base_path, $filename))->load();
+            Dotenv::create(self::$base_path, $filename)->load();
         }
     }
 
