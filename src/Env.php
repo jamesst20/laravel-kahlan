@@ -6,7 +6,7 @@ use Kahlan\Suite;
 use Dotenv\Dotenv;
 use Kahlan\Cli\Kahlan;
 use Kahlan\Plugin\Stub;
-use Kahlan\Filter\Filter;
+use Kahlan\Filter\Filters;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
@@ -75,11 +75,11 @@ class Env
         $commandLine->option('env', ['array' => true]);
         $commandLine->option('no-laravel', ['type' => 'boolean']);
 
-        Filter::register('laravel.env', function ($chain) use ($commandLine, $env) {
+        Filters::apply($kahlan, 'run', function ($next) use ($commandLine, $env) {
             $env->loadEnvFromFile('.env.kahlan');
             $env->loadEnvFromCli($commandLine);
 
-            return $chain->next();
+            return $next();
         });
 
         /*
@@ -87,30 +87,22 @@ class Env
         | Create Laravel context for specs
         |--------------------------------------------------------------------------
         */
-        Filter::register('laravel.start', function ($chain) use ($commandLine, $env, $kahlan) {
+        Filters::apply($kahlan, 'run', function ($next) use ($commandLine, $env, $kahlan) {
             // Due to the fact that Laravel is refreshed for each single spec,
             // it has huge impact on performance, that's why we will allow
             // disabling laravel at runtime for specs not relying on it.
             if ($commandLine->exists('no-laravel') && !$commandLine->get('no-laravel')
                 || !$commandLine->exists('no-laravel') && !env('NO_LARAVEL')
             ) {
-                $kahlan->suite()->beforeAll($env->refreshApplication());
-                $kahlan->suite()->beforeEach($env->refreshApplication());
-                $kahlan->suite()->afterEach($env->beforeLaravelDestroyed());
+                $kahlan->suite()->root()->beforeAll($env->refreshApplication());
+                $kahlan->suite()->root()->beforeEach($env->refreshApplication());
+                $kahlan->suite()->root()->afterEach($env->beforeLaravelDestroyed());
             }
 
-            return $chain->next();
+            return $next();
         });
 
         require __DIR__.'/helpers.php';
-
-        /*
-        |--------------------------------------------------------------------------
-        | Apply customizations
-        |--------------------------------------------------------------------------
-        */
-        Filter::apply($kahlan, 'interceptor', 'laravel.env');
-        Filter::apply($kahlan, 'interceptor', 'laravel.start');
     }
 
     /**
@@ -123,9 +115,13 @@ class Env
         return function () {
             $laravel = new Laravel;
             $laravel->baseUrl = env('BASE_URL', 'localhost');
-            $laravel->app = $this->bootstrapLaravel();
+            $laravel->app = Env::$instance->bootstrapLaravel();
 
-            $context = Suite::current();
+            /** @var \Kahlan\Scope\Group $this */
+            $context = $this;
+
+            // $context = getProtectedVar($context, '_block)->suite()->root()->scope();
+
             $context->app = $laravel->app;
             $context->laravel = $laravel;
         };
@@ -151,7 +147,7 @@ class Env
     public function beforeLaravelDestroyed()
     {
         return function () {
-            Suite::current()->laravel->afterEach();
+            Env::getProtectedVar(Suite::current(), '_scope')->laravel->afterEach();
         };
     }
 
@@ -276,5 +272,9 @@ class Env
         foreach ($env as $key => $val) {
             putenv($key.'='.$val);
         }
+    }
+
+    private static function getProtectedVar($instance, $varName) {
+        return \Closure::bind(function() use($varName) { return $this->$varName; }, $instance, get_class($instance))();
     }
 }
