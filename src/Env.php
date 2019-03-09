@@ -117,11 +117,8 @@ class Env
             $laravel->baseUrl = env('BASE_URL', 'localhost');
             $laravel->app = Env::$instance->bootstrapLaravel();
 
-            /** @var \Kahlan\Scope\Group $this */
-            $context = $this;
-
-            // $context = getProtectedVar($context, '_block)->suite()->root()->scope();
-
+            $context = Env::getProtectedVar(Suite::current(), '_scope');
+            
             $context->app = $laravel->app;
             $context->laravel = $laravel;
         };
