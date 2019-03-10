@@ -94,9 +94,9 @@ class Env
             if ($commandLine->exists('no-laravel') && !$commandLine->get('no-laravel')
                 || !$commandLine->exists('no-laravel') && !env('NO_LARAVEL')
             ) {
-                $kahlan->suite()->root()->beforeAll($env->refreshApplication());
-                $kahlan->suite()->root()->beforeEach($env->refreshApplication());
-                $kahlan->suite()->root()->afterEach($env->beforeLaravelDestroyed());
+                $kahlan->suite()->root()->beforeAll($env->refreshApplication($kahlan));
+                $kahlan->suite()->root()->beforeEach($env->refreshApplication($kahlan));
+                $kahlan->suite()->root()->afterEach($env->beforeLaravelDestroyed($kahlan));
             }
 
             return $next();
@@ -110,15 +110,15 @@ class Env
      *
      * @return \Closure
      */
-    public function refreshApplication()
+    public function refreshApplication($kahlan)
     {
-        return function () {
+        return function () use($kahlan) {
             $laravel = new Laravel;
             $laravel->baseUrl = env('BASE_URL', 'localhost');
             $laravel->app = Env::$instance->bootstrapLaravel();
 
-            $context = Env::getProtectedVar(Suite::current(), '_scope');
-            
+            // Make sure we always replace the same scope
+            $context = $kahlan->suite()->root()->scope();
             $context->app = $laravel->app;
             $context->laravel = $laravel;
         };
@@ -141,10 +141,10 @@ class Env
      *
      * @return void
      */
-    public function beforeLaravelDestroyed()
+    public function beforeLaravelDestroyed($kahlan)
     {
-        return function () {
-            Env::getProtectedVar(Suite::current(), '_scope')->laravel->afterEach();
+        return function () use($kahlan) {
+            $kahlan->suite()->root()->scope()->laravel->afterEach();
         };
     }
 
@@ -269,9 +269,5 @@ class Env
         foreach ($env as $key => $val) {
             putenv($key.'='.$val);
         }
-    }
-
-    private static function getProtectedVar($instance, $varName) {
-        return \Closure::bind(function() use($varName) { return $this->$varName; }, $instance, get_class($instance))();
     }
 }
